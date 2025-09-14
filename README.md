@@ -1,34 +1,73 @@
-Marketing Mix Model for Revenue Optimization: A Causal Analysis
-1. Data Preparation and Feature Engineering
-The raw dataset consisted of two years of weekly marketing and operational data. The preparation phase focused on creating a feature set that could capture the underlying dynamics of the business and satisfy the requirements of our modeling approach.
-Handling Seasonality and Trend: To allow the model to learn time-based patterns, the week column was engineered into several numerical features: month, year, and week_of_year. A time_index was also created to capture any long-term linear trend in the data. The model's reliance on week_of_year later confirmed the importance of this step in capturing strong seasonality.
-Handling Zero-Spend Periods: The dataset contained numerous weeks where spend on certain marketing channels was zero. Instead of altering these data points (e.g., by adding a small constant), they were left as-is. This decision was made in conjunction with the choice of a tree-based model (Random Forest), which can handle zeros natively by creating decision rules that effectively partition the data based on whether spend was zero or non-zero.
-Feature Scaling and Transformations: No feature scaling (e.g., normalization or standardization) was applied. This was an intentional choice. Tree-based models like the Random Forest are scale-invariant; their performance is not affected by the magnitude of the input variables. Omitting this step simplifies the pipeline without compromising the performance of the chosen model.
+# Causal Marketing Mix Model for Revenue Optimization
 
-2. Modeling Approach and Validation
-The modeling process was designed to be robust, interpretable, and directly address the causal nature of the problem.
-Model Selection: The analysis began by establishing a baseline with a Linear Regression model. This model failed to capture the highly non-linear, "spiky" nature of the revenue data, resulting in a negative R-squared on the test set. This diagnostic step justified the selection of a more powerful, non-linear model: the Random Forest Regressor. This model was chosen for its ability to learn complex patterns, handle interactions between features, and its inherent robustness to multicollinearity and feature scale.
-Hyperparameter Choices & Regularization: The Random Forest model was instantiated with n_estimators=100 (the number of trees in the forest) and random_state=42 to ensure reproducibility. While more extensive hyperparameter tuning (e.g., via GridSearchCV) could yield further marginal gains, these default parameters provided a strong initial result. The Random Forest algorithm inherently performs a type of regularization; by training each tree on a random subset of features, it prevents over-reliance on any single variable and reduces the risk of overfitting.
-Validation Plan: A rigorous validation plan was crucial. The data was split into a training set (the first 80% of weeks) and a testing set (the final 20%). This chronological split is mandatory for time-series data to prevent data leakage and ensure the model is validated on its ability to forecast future, unseen data.
+This project analyzes two years of weekly marketing data to build a robust Marketing Mix Model (MMM). The primary goal is to understand the key drivers of revenue and to investigate the causal hypothesis that social media spend influences revenue indirectly through Google Search.
 
-3. Causal Framing: Isolating the Mediator Effect
-A key requirement of the assessment was to treat google_spend as a mediator variable. A simple model that includes all spend channels as predictors would fail to properly account for this, risking what is known as a "back-door path" where correlations are misinterpreted as direct causal effects.
-To address this, an explicit two-stage modeling approach was implemented:
-Stage 1 (Mediator Model): A Random Forest model was trained to predict google_spend using only the other social media spend channels (Facebook, TikTok, etc.) as features.
-Stage 2 (Revenue Model): The main revenue model was then trained using the predicted google_spend from Stage 1 as a feature. Crucially, the actual google_spend was excluded from this stage to prevent data leakage and ensure we were only measuring the effect of the Google spend that was influenced by the other channels.
-This structure isolates the specific causal pathway of interest (Socials -> Google -> Revenue) and provides a more robust interpretation of each channel's contribution.
+---
 
-4. Model Diagnostics and Performance
-The final model demonstrated strong predictive power and provided clear insights.
-Out-of-Sample Performance: The model performed exceptionally well on the held-out test set, achieving an R-squared of 0.82 and a Mean Absolute Error (MAE) of approximately $13,048. This indicates the model successfully explains 82% of the variance in unseen future revenue.
-Stability and Residuals: The current validation is a single train-test split. For a production system, a more robust stability check using blocked or rolling-origin cross-validation would be a recommended next step to ensure performance is consistent across different time periods. A formal residual analysis was not conducted, but the high R-squared score suggests the model's errors are relatively small and unbiased.
-Sensitivity to Key Levers: The model's feature importance scores served as a sensitivity analysis. The model showed very high sensitivity to average_price and week_of_year, confirming them as critical business levers. It showed lower sensitivity to the binary promotions flag, suggesting the actual price point is a more significant driver than the simple existence of a promotion.
+## 1. Data Preparation and Feature Engineering
 
-5. Insights & Strategic Recommendations
-The model's outputs were translated into the following strategic insights, with careful consideration of potential analytical risks.
-Interpretation of Revenue Drivers: The primary drivers of revenue, defended by the model's feature importance scores, are Instagram Spend, Average Price, and Week of the Year. This indicates that the most successful weeks are a result of an integrated strategy: running effective Instagram campaigns at the right time of year, coupled with a compelling pricing strategy.
-Identified Risks & Nuances:
-Mediated Effects: The analysis revealed a nuanced insight. While the causal path through Google was explicitly modeled, the model assigned this predicted_google_spend feature a relatively low importance. This suggests that the direct impact of Instagram is a much stronger driver of revenue than its mediated impact through Google Search for this business.
-Collinearity: While Random Forests are robust to multicollinearity, the high correlation that likely exists between spend on different social channels (e.g., Facebook and Instagram) means their individual importance scores should be interpreted with caution. They are collectively important, but assigning precise credit to one over the other can be challenging.
-Actionable Recommendation: The business should prioritize optimizing its Instagram advertising strategy, ensuring budgets are highest during the peak seasonal periods identified by the model (e.g., end-of-year and new-year). Furthermore, this advertising strategy should be closely integrated with promotional pricing, as average_price was identified as a critical lever for maximizing revenue during these key campaigns.
+The raw dataset was clean and complete. The preparation phase focused on creating a feature set that could capture the underlying business dynamics.
 
+* **Seasonality and Trend:** To capture time-based patterns, the `week` column was engineered into `month`, `week_of_year`, and a `time_index`. The model's later reliance on `week_of_year` confirmed the importance of this step.
+* **Zero-Spend Periods:** The numerous zero-spend periods in the data were handled implicitly through the choice of a Random Forest model, which can natively learn rules from zero-valued data without special preprocessing.
+* **Feature Scaling:** No feature scaling was applied. This was an intentional choice as the final tree-based model is scale-invariant, making this step unnecessary.
+
+---
+
+## 2. Modeling Approach and Validation
+
+A rigorous, multi-step modeling approach was taken to ensure the final model was both accurate and interpretable.
+
+* **Model Selection:** An initial **Linear Regression** model served as a baseline but failed to capture the data's complexity (yielding a negative R-squared). A **Random Forest Regressor** was then chosen for its ability to model complex, non-linear relationships and interactions.
+* **Hyperparameters:** The model used `n_estimators=100` as a strong default and `random_state=42` to ensure full reproducibility of the results.
+* **Validation Plan:** A **chronological 80/20 train-test split** was used. This is essential for time-series data to prevent look-ahead bias and to ensure the model is fairly evaluated on its ability to predict future, unseen data.
+
+---
+
+## 3. Causal Framing: The Two-Stage Model
+
+To test the hypothesis that Google acts as a mediator for social media spend, a **two-stage modeling process** was implemented to isolate the causal pathway: `Socials -> Google -> Revenue`.
+
+1.  **Stage 1 (Mediator Model):** A model was trained to predict `google_spend` using *only* the spend from other social media channels.
+2.  **Stage 2 (Revenue Model):** The `predicted_google_spend` from Stage 1 was then used as a feature in the main revenue model, while the *actual* `google_spend` was excluded to prevent data leakage.
+
+This structure allows us to measure the effect of social spend that flows *through* the Google channel.
+
+---
+
+## 4. Model Diagnostics and Performance
+
+The final Random Forest model demonstrated strong predictive power on the out-of-sample test set.
+
+* **Out-of-Sample Performance:**
+    * **R-squared:** 0.82 (The model explains 82% of the variance in future revenue).
+    * **Mean Absolute Error (MAE):** ~$13,048.
+
+The plot below shows how closely the model's predictions on the unseen test data tracked the actual revenue.
+
+
+
+---
+
+## 5. Insights & Strategic Recommendations
+
+The model's feature importance scores were used to derive the following strategic insights.
+
+
+
+### Key Insights:
+
+* **Primary Driver:** `instagram_spend` is the most important marketing channel for driving revenue.
+* **Critical Levers:** Revenue is highly sensitive to `average_price` and `week_of_year`, indicating that pricing strategy and seasonality are critical business levers.
+* **Nuanced Causal Path:** The model assigned a low importance to the `predicted_google_spend` feature, suggesting the *direct* impact of Instagram is a much stronger driver than its *mediated* impact through Google Search for this business.
+
+### Final Recommendation:
+
+The business should prioritize an integrated strategy that **optimizes Instagram spend during key seasonal weeks** and aligns it with a **strategic promotional pricing schedule** to maximize revenue.
+
+---
+
+## How to Run This Project
+
+1.  **Libraries:** This project requires Python with the following libraries: `pandas`, `scikit-learn`, `seaborn`, `matplotlib`.
+2.  **Execution:** Place the `MMM.csv` file in the same directory as the notebook. Open the notebook in a compatible environment (like Google Colab or Jupyter) and run the cells from top to bottom.
